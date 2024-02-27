@@ -1,34 +1,56 @@
+boolean printDiagnostics = false;
+#define NROWS 6
+#define NCOLS 10
+#define BUFFER_LEN 120
+
 union CubeData
 {
   struct
   {
     int16_t state;
     int16_t watchdog;
-    int16_t chipTemp;
-    int16_t led1;
-    int16_t led2;
+    int16_t updateInterval;
+    int16_t publishPad;
+    int16_t mouseState;
+    int16_t mouseWeight;
   };
-  byte buffer[10];
+  byte buffer[12];
 };
 CubeData cubeData;
 
+union MousePadData
+{
+  struct
+  {
+    int16_t pad[NROWS][NCOLS];
+  };
+  byte buffer[BUFFER_LEN];
+};
+MousePadData mousePadData;
+
 #include "BlinkyPicoWCube.h"
+#include "MickeyMouse.h";
+
+MickeyMouse mickeyMouse = MickeyMouse(&mousePadData, &cubeData, NROWS, NCOLS);
 
 
-int commLEDPin = 16;
+int commLEDPin = LED_BUILTIN;
 int commLEDBright = 255; 
 int resetButtonPin = 15;
-int led1Pin = 14;
-int led2Pin = 17;
 
 unsigned long lastPublishTime;
+unsigned long lastPadPublishTime;
 unsigned long publishInterval = 2000;
 
 void setupServerComm()
 {
   // Optional setup to overide defaults
-//  Serial.begin(115200);
-  BlinkyPicoWCube.setChattyCathy(false);
+  if (printDiagnostics)
+  {
+    Serial.begin(115200);
+    delay(10000);
+  }
+  BlinkyPicoWCube.setChattyCathy(printDiagnostics);
   BlinkyPicoWCube.setWifiTimeoutMs(20000);
   BlinkyPicoWCube.setWifiRetryMs(20000);
   BlinkyPicoWCube.setMqttRetryMs(3000);
@@ -47,14 +69,16 @@ void setupServerComm()
 void setupCube()
 {
   lastPublishTime = millis();
-  pinMode(led1Pin, OUTPUT);
-  pinMode(led2Pin, OUTPUT);
+  lastPadPublishTime = lastPublishTime;
   cubeData.state = 1;
   cubeData.watchdog = 0;
-  cubeData.led1 = 0;
-  cubeData.led2 = 0;
-  analogWrite(led1Pin, cubeData.led1);    
-  analogWrite(led2Pin, cubeData.led2);    
+  cubeData.updateInterval = 1000;
+  cubeData.publishPad = 0;
+  cubeData.mouseState = 0;
+  cubeData.mouseWeight = 8192;
+  mickeyMouse.zero();
+  Serial.begin(115200);
+
 }
 
 void cubeLoop()
@@ -69,9 +93,32 @@ void cubeLoop()
     BlinkyPicoWCube::publishToServer();
   }  
   
-  cubeData.chipTemp = (int16_t) (analogReadTemp() * 100.0);
+  if ((nowTime - lastPadPublishTime) > cubeData.updateInterval)
+  {
+    lastPadPublishTime = nowTime;
+    if (cubeData.publishPad > 0)
+    {
+      switch(cubeData.mouseState)
+      {
+        case 0:
+          mickeyMouse.zero();
+          break;
+        case 1:
+          mickeyMouse.flat();
+          break;
+        case 2:
+          mickeyMouse.backNforth();
+          break;
+        case 3:
+          mickeyMouse.ramp();
+          break;
+        default:
+          break;
+      }
+      Serial.write(mousePadData.buffer, BUFFER_LEN);      
+    }
+  }  
 }
-
 
 void handleNewSettingFromServer(uint8_t address)
 {
@@ -84,10 +131,11 @@ void handleNewSettingFromServer(uint8_t address)
     case 2:
       break;
     case 3:
-      analogWrite(led1Pin, cubeData.led1);  
       break;
     case 4:
-      analogWrite(led2Pin, cubeData.led2);    
+      mickeyMouse.zero();
+      break;
+    case 5:
       break;
     default:
       break;
