@@ -13,8 +13,10 @@ union CubeData
     int16_t publishPad;
     int16_t mouseState;
     int16_t mouseWeight;
+    int16_t mouseSize;
+    int16_t mouseStep;    
   };
-  byte buffer[12];
+  byte buffer[16];
 };
 CubeData cubeData;
 
@@ -76,6 +78,8 @@ void setupCube()
   cubeData.publishPad = 0;
   cubeData.mouseState = 0;
   cubeData.mouseWeight = 8192;
+  cubeData.mouseSize = 100;
+  cubeData.mouseStep = 10;
   mickeyMouse.zero();
   Serial.begin(115200);
 
@@ -107,7 +111,7 @@ void cubeLoop()
           mickeyMouse.flat();
           break;
         case 2:
-          mickeyMouse.backNforth();
+          mickeyMouse.randomWalk();
           break;
         case 3:
           mickeyMouse.ramp();
